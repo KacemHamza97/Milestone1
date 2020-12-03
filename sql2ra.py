@@ -26,9 +26,11 @@ def select(stmt_tokens, table_names):
     attref_list = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name'])
                    for attribute in attributes_list]
     n = len(attref_list)
-    res = attref_list[0]
-    for i in range(1, n):
-        res = radb.ast.ValExprBinaryOp(res, radb.ast.sym.EQ, attref_list[i])
+    valexprebinaryop_list = [radb.ast.ValExprBinaryOp(attref_list[i], radb.ast.sym.EQ, attref_list[i+1]) for i in range(0, n, 2)]
+    res = valexprebinaryop_list[0]
+    n2 = len(valexprebinaryop_list)
+    for i in range(1, n2):
+        res = radb.ast.ValExprBinaryOp(res, radb.ast.sym.AND, valexprebinaryop_list[i])
 
     return radb.ast.Select(res, cross(table_names))
 
@@ -73,8 +75,8 @@ def cross(table_names):
 # print(sql1)
 # print(type(sql))
 
-sql2_test = "select distinct * from Person, Eats where Person.name = Eats.name and a = b "
-relational_query2_test = "\select_{Person.name = Eats.name}(Person \cross Eats);"
+sql2_test = "select distinct * from Person where age=16 and gender='f'"
+relational_query2_test = "\select_{(age = 16) and (gender = 'f')} Person;"
 
 sql2 = clean_query(sql2_test)
 relational_query2 = clean_query(relational_query2_test)
@@ -94,9 +96,9 @@ expected = radb.parse.one_statement_from_string(relational_query2)
 # print('yup')
 
 # cross_object = cross(patters['from'])
-s = select(stmt_tokens,patters['from'])
-print(type(s))
 # print(cross_object)
+s = select(stmt_tokens,patters['from'])
+print(s)
 
 def translate(stmt):
     # sql = """select distinct Person.name, pizzeria from Person, Eats, Serves
