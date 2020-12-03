@@ -131,3 +131,4 @@ dmypy.json
 #Ide foldrs
 .idea
 .DS_Store
+garbage.py
