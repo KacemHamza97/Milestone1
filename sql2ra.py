@@ -1,5 +1,3 @@
-from pprint import pprint
-
 import re
 import sqlparse
 import radb
@@ -9,7 +7,10 @@ import radb.parse
 
 def columns(stmt_tokens):
     p = stmt_tokens[4].value
-    return re.findall(r"[\w.']+", p)
+    if p.count('*'):
+        return "*"
+    else:
+        return re.findall(r"[\w.']+", p)
 
 
 def extract_rel_name(attribute):
@@ -68,8 +69,8 @@ def clean_query(sql_query):
 def cross(table_names):
     # if is_renamed(name) else radb.ast.Rename(relname=)
     relref_list = [radb.ast.Rename(relname=extract_table_alias(name), attrnames=None,
-                                   input=radb.ast.RelRef(rel=extract_table_name(name))) if is_renamed(name) else radb.ast.RelRef(
-        rel=extract_table_name(name)) for name in table_names]
+                                   input=radb.ast.RelRef(rel=extract_table_name(name))) if is_renamed(
+        name) else radb.ast.RelRef(rel=name) for name in table_names]
     n = len(relref_list)
     res = relref_list[0]
     for i in range(1, n):
@@ -80,7 +81,7 @@ def cross(table_names):
 def project(attributes, stmt_tokens, table_names):
     attrs = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name']) for
              attribute in attributes]
-    if patters['condition'] is None:
+    if str(stmt_tokens[-1][0]) != 'where':
         inputs = cross(table_names)
     else:
         inputs = select(stmt_tokens, table_names)
@@ -88,18 +89,18 @@ def project(attributes, stmt_tokens, table_names):
     return radb.ast.Project(attrs, inputs)
 
 
-sql2_test = "select distinct X.name from Person X"
-relational_query2_test = "\project_{X.name}(\\rename_{X: *}(Person));"
+# sql2_test = "select distinct X.name from Person X"
+# relational_query2_test = "Person;"
+#
+# sql2 = clean_query(sql2_test)
+# relational_query2 = clean_query(relational_query2_test)
+# stmt_tokens = sqlparse.parse(sql2)[0].tokens
 
-sql2 = clean_query(sql2_test)
-relational_query2 = clean_query(relational_query2_test)
-stmt_tokens = sqlparse.parse(sql2)[0].tokens
+# patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'columns': columns(stmt_tokens),
+#            'from': table_list_names(stmt_tokens),
+#            'condition': stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None}
 
-patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'columns': columns(stmt_tokens),
-           'from': table_list_names(stmt_tokens),
-           'condition': stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None}
-
-expected = radb.parse.one_statement_from_string(relational_query2)
+# expected = radb.parse.one_statement_from_string(relational_query2)
 
 # proj = project(patters['columns'], stmt_tokens, patters['from'])
 # print(proj)
@@ -110,4 +111,22 @@ expected = radb.parse.one_statement_from_string(relational_query2)
 
 
 def translate(stmt):
-    pass
+    sql = clean_query(stmt.value)
+    stmt_tokens = sqlparse.parse(sql)[0].tokens
+    patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'columns': columns(stmt_tokens),
+               'from': table_list_names(stmt_tokens),
+               'condition': stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None}
+    if patters['columns'] == '*' and len(patters['from']) == 1 and patters['condition'] is None:
+        return radb.ast.RelRef(rel=patters['from'][0])
+    elif patters['columns'] == '*' and patters['condition'] is None:
+        return cross(patters['from'])
+    elif patters['columns'] == '*':
+        return select(stmt_tokens, patters['from'])
+    else:
+        return project(patters['columns'], stmt_tokens, patters['from'])
+
+
+sql_final = "select distinct * from Person"
+stmt = sqlparse.parse(sql_final)[0]
+ra = translate(stmt)
+print(ra)
