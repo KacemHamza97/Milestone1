@@ -6,6 +6,7 @@ import radb.parse
 
 
 def columns(stmt_tokens):
+    """return a list containing all columns name in the query or * """
     p = stmt_tokens[4].value
     if p.count('*'):
         return "*"
@@ -14,6 +15,7 @@ def columns(stmt_tokens):
 
 
 def extract_rel_name(attribute):
+    """ return a dictionary containing rel and name attribute used for the construction of the object AttrRef"""
     if attribute.count('.') != 0:
         index_point = attribute.index('.')
         return {'rel': attribute[:index_point], 'name': attribute[index_point + 1:]}
@@ -22,6 +24,7 @@ def extract_rel_name(attribute):
 
 
 def select(stmt_tokens, table_names):
+    """ the select operation """
     where_clause = stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None
     where_string = where_clause.value.replace('and', '')
     attributes_list = re.findall(r"[\w.']+", where_string)[1:]
@@ -39,35 +42,38 @@ def select(stmt_tokens, table_names):
 
 
 def is_renamed(table_name):
+    """ returns True if the we use a shortcut of the table """
     return table_name.count(' ') > 0
 
 
 def extract_table_alias(name):
+    """ returns the shortcut of the table name"""
     return name[name.index(' ') + 1:]
 
 
 def extract_table_name(name):
+    """ returns the name of the table which has a shortcut """
     return name[:name.index(' ')]
 
 
 def table_list_names(stmt_tokens):
+    """ return a list contaning tables name"""
     return list(map(lambda x: x.strip(), clean_table_names(stmt_tokens[8].value).split(',')))
 
 
 def clean_table_names(table_names):
-    """remove all successive whitespace >2  modified recently it was
-                re.sub(r"\s+", "", table_names) in case code is broken """
-    return re.sub(r"\s\s", "", table_names).strip()
+    """remove all successive whitespace >2  """
+    return re.sub(r"\s\s+", "", table_names).strip()
 
 
 def clean_query(sql_query):
-    """remove all successive whitespace >2 and remove the white spaces at the start a
-                            and at the end of the sql_query"""
+    """removes all successive whitespaces >2 and replace them with one whitespace.
+        also it removes the white spaces at the start and at the end of the sql_query"""
     return re.sub("\s\s+", " ", sql_query).strip()
 
 
 def cross(table_names):
-    # if is_renamed(name) else radb.ast.Rename(relname=)
+    """ cross operation """
     relref_list = [radb.ast.Rename(relname=extract_table_alias(name), attrnames=None,
                                    input=radb.ast.RelRef(rel=extract_table_name(name))) if is_renamed(
         name) else radb.ast.RelRef(rel=name) for name in table_names]
@@ -79,6 +85,7 @@ def cross(table_names):
 
 
 def project(attributes, stmt_tokens, table_names):
+    """ project operation """
     attrs = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name']) for
              attribute in attributes]
     if str(stmt_tokens[-1][0]) != 'where':
@@ -87,27 +94,6 @@ def project(attributes, stmt_tokens, table_names):
         inputs = select(stmt_tokens, table_names)
 
     return radb.ast.Project(attrs, inputs)
-
-
-# sql2_test = "select distinct X.name from Person X"
-# relational_query2_test = "Person;"
-#
-# sql2 = clean_query(sql2_test)
-# relational_query2 = clean_query(relational_query2_test)
-# stmt_tokens = sqlparse.parse(sql2)[0].tokens
-
-# patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'columns': columns(stmt_tokens),
-#            'from': table_list_names(stmt_tokens),
-#            'condition': stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None}
-
-# expected = radb.parse.one_statement_from_string(relational_query2)
-
-# proj = project(patters['columns'], stmt_tokens, patters['from'])
-# print(proj)
-# cross_object = cross(patters['from'])
-# print(cross_object)
-# s = select(stmt_tokens,patters['from'])
-# print(s)
 
 
 def translate(stmt):
@@ -126,6 +112,7 @@ def translate(stmt):
         return project(patters['columns'], stmt_tokens, patters['from'])
 
 
+# code for local test
 sql_final = "select distinct * from Person"
 stmt = sqlparse.parse(sql_final)[0]
 ra = translate(stmt)
