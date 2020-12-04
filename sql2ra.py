@@ -7,16 +7,17 @@ import radb.ast
 import radb.parse
 
 
+def columns(stmt_tokens):
+    p = stmt_tokens[4].value
+    return re.findall(r"[\w.']+", p)
+
+
 def extract_rel_name(attribute):
     if attribute.count('.') != 0:
         index_point = attribute.index('.')
         return {'rel': attribute[:index_point], 'name': attribute[index_point + 1:]}
     else:
         return {'rel': None, 'name': attribute}
-
-
-def table_list_names(stmt_tokens):
-    return clean_table_names(stmt_tokens[8].value).split(',')
 
 
 def select(stmt_tokens, table_names):
@@ -26,7 +27,8 @@ def select(stmt_tokens, table_names):
     attref_list = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name'])
                    for attribute in attributes_list]
     n = len(attref_list)
-    valexprebinaryop_list = [radb.ast.ValExprBinaryOp(attref_list[i], radb.ast.sym.EQ, attref_list[i+1]) for i in range(0, n, 2)]
+    valexprebinaryop_list = [radb.ast.ValExprBinaryOp(attref_list[i], radb.ast.sym.EQ, attref_list[i + 1]) for i in
+                             range(0, n, 2)]
     res = valexprebinaryop_list[0]
     n2 = len(valexprebinaryop_list)
     for i in range(1, n2):
@@ -35,8 +37,26 @@ def select(stmt_tokens, table_names):
     return radb.ast.Select(res, cross(table_names))
 
 
+def is_renamed(table_name):
+    return table_name.count(' ') > 0
+
+
+def extract_table_alias(name):
+    return name[name.index(' ') + 1:]
+
+
+def extract_table_name(name):
+    return name[:name.index(' ')]
+
+
+def table_list_names(stmt_tokens):
+    return list(map(lambda x: x.strip(), clean_table_names(stmt_tokens[8].value).split(',')))
+
+
 def clean_table_names(table_names):
-    return re.sub(r"\s+", "", table_names)
+    """remove all successive whitespace >2  modified recently it was
+                re.sub(r"\s+", "", table_names) in case code is broken """
+    return re.sub(r"\s\s", "", table_names).strip()
 
 
 def clean_query(sql_query):
@@ -46,7 +66,10 @@ def clean_query(sql_query):
 
 
 def cross(table_names):
-    relref_list = [radb.ast.RelRef(rel=name) for name in table_names]
+    # if is_renamed(name) else radb.ast.Rename(relname=)
+    relref_list = [radb.ast.Rename(relname=extract_table_alias(name), attrnames=None,
+                                   input=radb.ast.RelRef(rel=extract_table_name(name))) if is_renamed(name) else radb.ast.RelRef(
+        rel=extract_table_name(name)) for name in table_names]
     n = len(relref_list)
     res = relref_list[0]
     for i in range(1, n):
@@ -54,63 +77,37 @@ def cross(table_names):
     return res
 
 
-###########     select distinct * from Person where age=16;     #############
-# cond = radb.ast.ValExprBinaryOp(radb.ast.AttrRef(None, 'age'), radb.ast.sym.EQ, radb.ast.RANumber('16'))
-# input = radb.ast.RelRef('Person')
-# select = radb.ast.Select(cond, input)
-# print(select) => \select_{age=16}(Person);
-# inputs =
-# type(radb.ast.Cross())
-###       "select distinct * from Person" ====>   "Person;"
+def project(attributes, stmt_tokens, table_names):
+    attrs = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name']) for
+             attribute in attributes]
+    if patters['condition'] is None:
+        inputs = cross(table_names)
+    else:
+        inputs = select(stmt_tokens, table_names)
 
-# sql = "select distinct * from Person, Eats, Serves,foot,google"
-# relational_query = "((Person \cross Eats) \cross Serves) \cross foot;"
-# sql = clean_query(sql)
-# relational_query = clean_query(relational_query)
+    return radb.ast.Project(attrs, inputs)
 
-# stmt_tokens = sqlparse.parse(sql)[0].tokens
 
-# test_stmt = sqlparse.parse(sql)[0]
-# sql1 = test_stmt.value
-# print(sql1)
-# print(type(sql))
-
-sql2_test = "select distinct * from Person where age=16 and gender='f'"
-relational_query2_test = "\select_{(age = 16) and (gender = 'f')} Person;"
+sql2_test = "select distinct X.name from Person X"
+relational_query2_test = "\project_{X.name}(\\rename_{X: *}(Person));"
 
 sql2 = clean_query(sql2_test)
 relational_query2 = clean_query(relational_query2_test)
 stmt_tokens = sqlparse.parse(sql2)[0].tokens
 
-patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'attributes': stmt_tokens[4],
+patters = {'operation': stmt_tokens[0].value, "distinct": stmt_tokens[2], 'columns': columns(stmt_tokens),
            'from': table_list_names(stmt_tokens),
            'condition': stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None}
 
 expected = radb.parse.one_statement_from_string(relational_query2)
 
-# where_tokens = patters['condition'].value.replace('and', '')
-# where_tokens = re.findall(r"[\w.']+", where_tokens)[1:][0]
-# print(where_tokens[:where_tokens.index('.')])
-# print(where_tokens[where_tokens.index('.') + 1:])
-# print(expected.inputs)
-# print('yup')
-
+# proj = project(patters['columns'], stmt_tokens, patters['from'])
+# print(proj)
 # cross_object = cross(patters['from'])
 # print(cross_object)
-s = select(stmt_tokens,patters['from'])
-print(s)
+# s = select(stmt_tokens,patters['from'])
+# print(s)
+
 
 def translate(stmt):
-    # sql = """select distinct Person.name, pizzeria from Person, Eats, Serves
-    # where Person.name = Eats.name and Eats.pizza = Serves.pizza"""
-    stmt_tokens = stmt.tokens
-    patters = {'operation': stmt_tokens[0], "distinct": stmt_tokens[2], 'attributes': stmt_tokens[4],
-               'from': stmt_tokens[8], 'where': stmt_tokens[-1]}
-
-    if (str(patters['operation']) == 'select'):
-        cond = radb.ast.ValExprBinaryOp(radb.ast.AttrRef(None, 'age'), radb.ast.sym.EQ, radb.ast.RANumber('16'))
-        input = radb.ast.RelRef('Person')
-        select = radb.ast.Select(cond, input)
-
-# for i, j in patters.items():
-#     print(i, j)
+    pass
