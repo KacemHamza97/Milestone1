@@ -112,8 +112,4 @@ def translate(stmt):
         return project(patters['columns'], stmt_tokens, patters['from'])
 
 
-# code for local test
-sql_final = "select distinct * from Person"
-stmt = sqlparse.parse(sql_final)[0]
-ra = translate(stmt)
-print(ra)
+
