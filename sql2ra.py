@@ -6,7 +6,7 @@ import radb.parse
 
 
 def columns(stmt_tokens):
-    """return a list containing all columns name in the query or * """
+    """returns a list containing all columns name in the query or * """
     p = stmt_tokens[4].value
     if p.count('*'):
         return "*"
@@ -15,30 +15,12 @@ def columns(stmt_tokens):
 
 
 def extract_rel_name(attribute):
-    """ return a dictionary containing rel and name attribute used for the construction of the object AttrRef"""
+    """ returns a dictionary containing rel and name attributes used for the construction of the object AttrRef"""
     if attribute.count('.') != 0:
         index_point = attribute.index('.')
         return {'rel': attribute[:index_point], 'name': attribute[index_point + 1:]}
     else:
         return {'rel': None, 'name': attribute}
-
-
-def select(stmt_tokens, table_names):
-    """ the select operation """
-    where_clause = stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None
-    where_string = where_clause.value.replace('and', '')
-    attributes_list = re.findall(r"[\w.']+", where_string)[1:]
-    attref_list = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name'])
-                   for attribute in attributes_list]
-    n = len(attref_list)
-    valexprebinaryop_list = [radb.ast.ValExprBinaryOp(attref_list[i], radb.ast.sym.EQ, attref_list[i + 1]) for i in
-                             range(0, n, 2)]
-    res = valexprebinaryop_list[0]
-    n2 = len(valexprebinaryop_list)
-    for i in range(1, n2):
-        res = radb.ast.ValExprBinaryOp(res, radb.ast.sym.AND, valexprebinaryop_list[i])
-
-    return radb.ast.Select(res, cross(table_names))
 
 
 def is_renamed(table_name):
@@ -57,7 +39,7 @@ def extract_table_name(name):
 
 
 def table_list_names(stmt_tokens):
-    """ return a list contaning tables name"""
+    """ returns a list containing tables name"""
     return list(map(lambda x: x.strip(), clean_table_names(stmt_tokens[8].value).split(',')))
 
 
@@ -82,6 +64,24 @@ def cross(table_names):
     for i in range(1, n):
         res = radb.ast.Cross(res, relref_list[i])
     return res
+
+
+def select(stmt_tokens, table_names):
+    """ the select operation """
+    where_clause = stmt_tokens[-1] if str(stmt_tokens[-1][0]) == 'where' else None
+    where_string = where_clause.value.replace('and', '')
+    attributes_list = re.findall(r"[\w.']+", where_string)[1:]
+    attref_list = [radb.ast.AttrRef(rel=extract_rel_name(attribute)['rel'], name=extract_rel_name(attribute)['name'])
+                   for attribute in attributes_list]
+    n = len(attref_list)
+    valexprebinaryop_list = [radb.ast.ValExprBinaryOp(attref_list[i], radb.ast.sym.EQ, attref_list[i + 1]) for i in
+                             range(0, n, 2)]
+    res = valexprebinaryop_list[0]
+    n2 = len(valexprebinaryop_list)
+    for i in range(1, n2):
+        res = radb.ast.ValExprBinaryOp(res, radb.ast.sym.AND, valexprebinaryop_list[i])
+
+    return radb.ast.Select(res, cross(table_names))
 
 
 def project(attributes, stmt_tokens, table_names):
@@ -110,6 +110,3 @@ def translate(stmt):
         return select(stmt_tokens, patters['from'])
     else:
         return project(patters['columns'], stmt_tokens, patters['from'])
-
-
-
